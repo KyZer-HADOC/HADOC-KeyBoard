@@ -41,7 +41,7 @@ Name: "{group}\HADOC KeyBoard"; Filename: "{app}\{#MyAppExe}"
 Name: "{autodesktop}\HADOC KeyBoard"; Filename: "{app}\{#MyAppExe}"; Tasks: desktopicon
 
 [Registry]
-Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "HADOCKeyBoard"; ValueData: """"{app}\{#MyAppExe}""""; Flags: uninsdeletevalue; Tasks: startup
+Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "HADOCKeyBoard"; ValueData: """{app}\{#MyAppExe}"""; Flags: uninsdeletevalue; Tasks: startup
 
 [Run]
 Filename: "{sys}\regsvr32.exe"; Parameters: "/s ""{app}\HadocKeyboardTIP64.dll"""; Flags: runhidden waituntilterminated 64bit
