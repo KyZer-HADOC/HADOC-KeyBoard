@@ -38,7 +38,7 @@ jobs:
         shell: cmd
         run: >
           cl /nologo /LD /EHsc /std:c++17 /utf-8 /DUNICODE /D_UNICODE
-          native\HadocKeyboardTIP.cpp ole32.lib advapi32.lib uuid.lib
+          native\HadocKeyboardTIP.cpp ole32.lib advapi32.lib user32.lib uuid.lib
           /link /OUT:publish\HadocKeyboardTIP64.dll
 
       - name: Configure MSVC x86
@@ -50,7 +50,7 @@ jobs:
         shell: cmd
         run: >
           cl /nologo /LD /EHsc /std:c++17 /utf-8 /DUNICODE /D_UNICODE
-          native\HadocKeyboardTIP.cpp ole32.lib advapi32.lib uuid.lib
+          native\HadocKeyboardTIP.cpp ole32.lib advapi32.lib user32.lib uuid.lib
           /link /OUT:publish\HadocKeyboardTIP32.dll
 
       - name: Install Inno Setup
