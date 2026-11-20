@@ -63,14 +63,13 @@ internal sealed class KeyboardHook : IDisposable
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
     private static extern IntPtr GetModuleHandle(string? lpModuleName);
     [DllImport("user32.dll")]
-    private static extern short GetAsyncKeyState(int vKey);
-    [DllImport("user32.dll")]
     private static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll", SetLastError = true)]
     private static extern uint SendInput(uint nInputs, INPUT[] pInputs, int cbSize);
 
     private readonly HookProc _kbProc;
     private readonly HookProc _mouseProc;
+    private readonly HashSet<int> _pressedKeys = new();
     private readonly HashSet<int> _swallowedKeyUps = new();
     private IntPtr _kbHook = IntPtr.Zero;
     private IntPtr _mouseHook = IntPtr.Zero;
@@ -114,18 +113,25 @@ internal sealed class KeyboardHook : IDisposable
         _emitted = "";
     }
 
-    private static bool Down(int vKey) => (GetAsyncKeyState(vKey) & 0x8000) != 0;
+    // Low-level hooks run before Windows updates its asynchronous key state.
+    // Track physical modifier key-down/up messages ourselves instead.
+    private bool ControlDown() =>
+        _pressedKeys.Contains(VK_CONTROL) ||
+        _pressedKeys.Contains(VK_LCONTROL) ||
+        _pressedKeys.Contains(VK_RCONTROL);
 
-    private static bool ControlDown() =>
-        Down(VK_CONTROL) || Down(VK_LCONTROL) || Down(VK_RCONTROL);
+    private bool AltDown() =>
+        _pressedKeys.Contains(VK_MENU) ||
+        _pressedKeys.Contains(VK_LMENU) ||
+        _pressedKeys.Contains(VK_RMENU);
 
-    private static bool AltDown() =>
-        Down(VK_MENU) || Down(VK_LMENU) || Down(VK_RMENU);
+    private bool ShiftDown() =>
+        _pressedKeys.Contains(VK_SHIFT) ||
+        _pressedKeys.Contains(VK_LSHIFT) ||
+        _pressedKeys.Contains(VK_RSHIFT);
 
-    private static bool ShiftDown() =>
-        Down(VK_SHIFT) || Down(VK_LSHIFT) || Down(VK_RSHIFT);
-
-    private static bool WindowsKeyDown() => Down(VK_LWIN) || Down(VK_RWIN);
+    private bool WindowsKeyDown() =>
+        _pressedKeys.Contains(VK_LWIN) || _pressedKeys.Contains(VK_RWIN);
 
     private IntPtr MouseProc(int nCode, IntPtr wParam, IntPtr lParam)
     {
@@ -149,16 +155,15 @@ internal sealed class KeyboardHook : IDisposable
 
             if (!injected)
             {
-                // Match key-up with every key-down swallowed by this hook. This is
-                // especially important for Win+Space so Windows cannot also switch
-                // its own input-language layout.
                 if (msg == WM_KEYUP || msg == WM_SYSKEYUP)
                 {
+                    _pressedKeys.Remove(vk);
                     if (_swallowedKeyUps.Remove(vk))
                         return (IntPtr)1;
                 }
                 else if (msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN)
                 {
+                    _pressedKeys.Add(vk);
                     try
                     {
                         if (HandleKeyDown(vk))
