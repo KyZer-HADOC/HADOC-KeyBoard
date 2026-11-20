@@ -19,7 +19,7 @@ jobs:
         with:
           dotnet-version: '8.0.x'
 
-      - name: Publish app (self-contained, single file)
+      - name: Publish tray controller
         run: >
           dotnet publish HadocKeyboard/HadocKeyboard.csproj
           -c Release -r win-x64 --self-contained true
@@ -29,11 +29,71 @@ jobs:
           -p:DebugSymbols=false
           -o publish
 
+      - name: Configure MSVC x64
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Build 64-bit TSF input method
+        shell: cmd
+        run: >
+          cl /nologo /LD /EHsc /std:c++17 /utf-8 /DUNICODE /D_UNICODE /DWIN32_LEAN_AND_MEAN
+          native\HadocKeyboardTIP.cpp ole32.lib advapi32.lib msctf.lib
+          /link /OUT:publish\HadocKeyboardTIP64.dll
+
+      - name: Configure MSVC x86
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x86
+
+      - name: Build 32-bit TSF input method
+        shell: cmd
+        run: >
+          cl /nologo /LD /EHsc /std:c++17 /utf-8 /DUNICODE /D_UNICODE /DWIN32_LEAN_AND_MEAN
+          native\HadocKeyboardTIP.cpp ole32.lib advapi32.lib msctf.lib
+          /link /OUT:publish\HadocKeyboardTIP32.dll
+
       - name: Install Inno Setup
         run: choco install innosetup -y --no-progress
 
       - name: Build installer
         run: '& "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer\setup.iss'
+
+      - name: Test installer registration and file integrity
+        shell: pwsh
+        run: |
+          $installer = (Resolve-Path "dist/HADOC-KeyBoard-Setup.exe").Path
+          $installDir = Join-Path $env:RUNNER_TEMP "HADOC-KeyBoard-Install-Test"
+
+          $install = Start-Process -FilePath $installer -ArgumentList @(
+            "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/SP-", "/DIR=$installDir"
+          ) -Wait -PassThru
+
+          if ($install.ExitCode -ne 0) {
+            throw "Installer returned exit code $($install.ExitCode)."
+          }
+
+          foreach ($file in @("HadocKeyboard.exe", "HadocKeyboardTIP64.dll", "HadocKeyboardTIP32.dll")) {
+            if (-not (Test-Path -LiteralPath (Join-Path $installDir $file))) {
+              throw "Installer did not copy $file."
+            }
+          }
+
+          $clsid = "{97A2D4E1-8B4F-4E6A-9B31-726C18A4D255}"
+          $comKey64 = "HKLM:\SOFTWARE\Classes\CLSID\$clsid\InprocServer32"
+          $comKey32 = "HKLM:\SOFTWARE\Classes\WOW6432Node\CLSID\$clsid\InprocServer32"
+          if (-not (Test-Path $comKey64)) { throw "64-bit TSF COM registration missing." }
+          if (-not (Test-Path $comKey32)) { throw "32-bit TSF COM registration missing." }
+
+          $uninstaller = Join-Path $installDir "unins000.exe"
+          if (Test-Path -LiteralPath $uninstaller) {
+            $uninstall = Start-Process -FilePath $uninstaller -ArgumentList @(
+              "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART"
+            ) -Wait -PassThru
+            if ($uninstall.ExitCode -ne 0) {
+              throw "Installer smoke-test cleanup failed with code $($uninstall.ExitCode)."
+            }
+          }
 
       - name: Create installer checksum
         shell: pwsh
@@ -60,9 +120,9 @@ jobs:
         if: github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.2
+          tag_name: v1.0.3
           target_commitish: main
-          name: HADOC KeyBoard v1.0.2
+          name: HADOC KeyBoard v1.0.3
           files: |
             dist/HADOC-KeyBoard-Setup.exe
             dist/SHA256SUMS.txt

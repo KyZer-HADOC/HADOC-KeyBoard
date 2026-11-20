@@ -2,7 +2,7 @@
 #define MyAppName "HADOC KeyBoard"
 #define MyAppExe "HadocKeyboard.exe"
 #ifndef MyAppVersion
-  #define MyAppVersion "1.0.2"
+  #define MyAppVersion "1.0.3"
 #endif
 
 [Setup]
@@ -19,8 +19,7 @@ SolidCompression=yes
 WizardStyle=modern
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
-PrivilegesRequired=lowest
-PrivilegesRequiredOverridesAllowed=dialog
+PrivilegesRequired=admin
 CloseApplications=yes
 CloseApplicationsFilter=HadocKeyboard.exe
 RestartApplications=no
@@ -34,16 +33,22 @@ Name: "desktopicon"; Description: "Create a desktop shortcut"; Flags: unchecked
 
 [Files]
 Source: "..\publish\{#MyAppExe}"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\publish\HadocKeyboardTIP64.dll"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\publish\HadocKeyboardTIP32.dll"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\HADOC KeyBoard"; Filename: "{app}\{#MyAppExe}"
 Name: "{autodesktop}\HADOC KeyBoard"; Filename: "{app}\{#MyAppExe}"; Tasks: desktopicon
 
 [Registry]
-Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "HADOCKeyBoard"; ValueData: """{app}\{#MyAppExe}"""; Flags: uninsdeletevalue; Tasks: startup
+Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "HADOCKeyBoard"; ValueData: """"{app}\{#MyAppExe}""""; Flags: uninsdeletevalue; Tasks: startup
 
 [Run]
-Filename: "{app}\{#MyAppExe}"; Description: "Launch HADOC KeyBoard now"; Flags: nowait postinstall skipifsilent; Check: FileExists(ExpandConstant('{app}\{#MyAppExe}'))
+Filename: "{sys}\regsvr32.exe"; Parameters: "/s ""{app}\HadocKeyboardTIP64.dll"""; Flags: runhidden waituntilterminated 64bit
+Filename: "{syswow64}\regsvr32.exe"; Parameters: "/s ""{app}\HadocKeyboardTIP32.dll"""; Flags: runhidden waituntilterminated 32bit
+Filename: "{app}\{#MyAppExe}"; Description: "Launch HADOC KeyBoard now"; Flags: nowait postinstall skipifsilent
 
 [UninstallRun]
+Filename: "{syswow64}\regsvr32.exe"; Parameters: "/u /s ""{app}\HadocKeyboardTIP32.dll"""; Flags: runhidden waituntilterminated 32bit
+Filename: "{sys}\regsvr32.exe"; Parameters: "/u /s ""{app}\HadocKeyboardTIP64.dll"""; Flags: runhidden waituntilterminated 64bit
 Filename: "{sys}\taskkill.exe"; Parameters: "/F /IM {#MyAppExe}"; Flags: runhidden; RunOnceId: "KillHadocKeyboard"

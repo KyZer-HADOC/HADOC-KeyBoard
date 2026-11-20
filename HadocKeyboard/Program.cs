@@ -1,7 +1,4 @@
-using System.Drawing;
-using System.Drawing.Drawing2D;
-using System.Drawing.Text;
-using System.Runtime.InteropServices;
+using System.Diagnostics;
 
 namespace HadocKeyboard;
 
@@ -21,77 +18,57 @@ internal static class Program
 
 internal sealed class TrayContext : ApplicationContext
 {
-    private readonly KeyboardHook _hook;
     private readonly NotifyIcon _tray;
-    private readonly Icon _onIcon;
-    private readonly Icon _offIcon;
-    private readonly ToolStripMenuItem _toggleItem;
-
-    [DllImport("user32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool DestroyIcon(IntPtr hIcon);
+    private readonly ToolStripMenuItem _statusItem;
 
     public TrayContext()
     {
-        _onIcon = MakeIcon("සි", Color.FromArgb(0, 120, 215));
-        _offIcon = MakeIcon("En", Color.Gray);
+        _statusItem = new ToolStripMenuItem("HADOC KeyBoard is installed") { Enabled = false };
 
-        try
-        {
-            _hook = new KeyboardHook();
-        }
-        catch (Exception ex)
-        {
-            _onIcon.Dispose();
-            _offIcon.Dispose();
-            MessageBox.Show(ex.Message, "HADOC KeyBoard", MessageBoxButtons.OK, MessageBoxIcon.Error);
-            throw;
-        }
+        var settingsItem = new ToolStripMenuItem("Windows language settings", null, (_, _) => OpenLanguageSettings());
+        var helpItem = new ToolStripMenuItem("How to switch keyboards", null, (_, _) =>
+            MessageBox.Show(
+                "Press Win + Space to open the Windows input switcher.\n\n" +
+                "Select “Sinhala - HADOC KeyBoard” to type Singlish as Sinhala.\n" +
+                "Select Default or Helakuru in the same switcher to change input method.",
+                "HADOC KeyBoard", MessageBoxButtons.OK, MessageBoxIcon.Information));
+        var exitItem = new ToolStripMenuItem("Close tray icon", null, (_, _) => ExitThread());
 
-        _toggleItem = new ToolStripMenuItem("Toggle Sinhala / English  (Win+Space / Ctrl+Space)", null, (_, _) => _hook.Toggle());
-        var exitItem = new ToolStripMenuItem("Exit", null, (_, _) => ExitThread());
         var menu = new ContextMenuStrip();
-        menu.Items.Add(_toggleItem);
+        menu.Items.Add(_statusItem);
+        menu.Items.Add(new ToolStripSeparator());
+        menu.Items.Add(settingsItem);
+        menu.Items.Add(helpItem);
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(exitItem);
 
-        _tray = new NotifyIcon { ContextMenuStrip = menu, Visible = true };
-        _tray.MouseClick += (_, e) => { if (e.Button == MouseButtons.Left) _hook.Toggle(); };
-        _hook.EnabledChanged += RefreshTray;
-        RefreshTray();
-
-        _tray.ShowBalloonTip(3000, "HADOC KeyBoard",
-            "Running. Press Win+Space or Ctrl+Space to switch Sinhala / English.", ToolTipIcon.Info);
-    }
-
-    private void RefreshTray()
-    {
-        _tray.Icon = _hook.Enabled ? _onIcon : _offIcon;
-        _tray.Text = _hook.Enabled ? "HADOC KeyBoard: Sinhala" : "HADOC KeyBoard: English";
-    }
-
-    private static Icon MakeIcon(string text, Color back)
-    {
-        using var bmp = new Bitmap(32, 32);
-        using (var g = Graphics.FromImage(bmp))
+        _tray = new NotifyIcon
         {
-            g.SmoothingMode = SmoothingMode.AntiAlias;
-            g.TextRenderingHint = TextRenderingHint.AntiAlias;
-            using var brush = new SolidBrush(back);
-            g.FillEllipse(brush, 0, 0, 31, 31);
-            using var font = new Font("Nirmala UI", text.Length > 1 && text[0] < 128 ? 12f : 15f, FontStyle.Bold, GraphicsUnit.Pixel);
-            var size = g.MeasureString(text, font);
-            g.DrawString(text, font, Brushes.White, (32 - size.Width) / 2f, (32 - size.Height) / 2f);
-        }
+            Icon = SystemIcons.Application,
+            Text = "HADOC KeyBoard - switch with Win + Space",
+            ContextMenuStrip = menu,
+            Visible = true
+        };
+        _tray.MouseClick += (_, e) =>
+        {
+            if (e.Button == MouseButtons.Left)
+                OpenLanguageSettings();
+        };
 
-        IntPtr hIcon = bmp.GetHicon();
+        _tray.ShowBalloonTip(5000, "HADOC KeyBoard",
+            "Installed as a Windows input method. Press Win + Space and select Sinhala - HADOC KeyBoard.",
+            ToolTipIcon.Info);
+    }
+
+    private static void OpenLanguageSettings()
+    {
         try
         {
-            return (Icon)Icon.FromHandle(hIcon).Clone();
+            Process.Start(new ProcessStartInfo("ms-settings:regionlanguage") { UseShellExecute = true });
         }
-        finally
+        catch (Exception ex)
         {
-            DestroyIcon(hIcon);
+            MessageBox.Show(ex.Message, "HADOC KeyBoard", MessageBoxButtons.OK, MessageBoxIcon.Warning);
         }
     }
 
@@ -99,9 +76,6 @@ internal sealed class TrayContext : ApplicationContext
     {
         _tray.Visible = false;
         _tray.Dispose();
-        _hook.Dispose();
-        _onIcon.Dispose();
-        _offIcon.Dispose();
         base.ExitThreadCore();
     }
 }
