@@ -2,7 +2,7 @@
 #define MyAppName "HADOC KeyBoard"
 #define MyAppExe "HadocKeyboard.exe"
 #ifndef MyAppVersion
-  #define MyAppVersion "1.0.0"
+  #define MyAppVersion "1.0.1"
 #endif
 
 [Setup]
@@ -21,6 +21,10 @@ ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog
+CloseApplications=yes
+CloseApplicationsFilter=HadocKeyboard.exe
+RestartApplications=no
+AppMutex=HADOC-KeyBoard-SingleInstance
 UninstallDisplayName={#MyAppName}
 UninstallDisplayIcon={app}\{#MyAppExe}
 
@@ -39,7 +43,7 @@ Name: "{autodesktop}\HADOC KeyBoard"; Filename: "{app}\{#MyAppExe}"; Tasks: desk
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "HADOCKeyBoard"; ValueData: """{app}\{#MyAppExe}"""; Flags: uninsdeletevalue; Tasks: startup
 
 [Run]
-Filename: "{app}\{#MyAppExe}"; Description: "Launch HADOC KeyBoard now"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\{#MyAppExe}"; Description: "Launch HADOC KeyBoard now"; Flags: nowait postinstall skipifsilent; Check: FileExists(ExpandConstant('{app}\{#MyAppExe}'))
 
 [UninstallRun]
 Filename: "{sys}\taskkill.exe"; Parameters: "/F /IM {#MyAppExe}"; Flags: runhidden; RunOnceId: "KillHadocKeyboard"

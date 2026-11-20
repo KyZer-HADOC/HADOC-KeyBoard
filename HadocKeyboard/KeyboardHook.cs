@@ -14,7 +14,9 @@ internal sealed class KeyboardHook : IDisposable
     private const int WH_KEYBOARD_LL = 13;
     private const int WH_MOUSE_LL = 14;
     private const int WM_KEYDOWN = 0x0100;
+    private const int WM_KEYUP = 0x0101;
     private const int WM_SYSKEYDOWN = 0x0104;
+    private const int WM_SYSKEYUP = 0x0105;
     private const int WM_LBUTTONDOWN = 0x0201;
     private const int WM_RBUTTONDOWN = 0x0204;
     private const int WM_MBUTTONDOWN = 0x0207;
@@ -25,6 +27,9 @@ internal sealed class KeyboardHook : IDisposable
 
     private const int VK_BACK = 0x08, VK_CAPITAL = 0x14, VK_SPACE = 0x20;
     private const int VK_SHIFT = 0x10, VK_CONTROL = 0x11, VK_MENU = 0x12;
+    private const int VK_LSHIFT = 0xA0, VK_RSHIFT = 0xA1;
+    private const int VK_LCONTROL = 0xA2, VK_RCONTROL = 0xA3;
+    private const int VK_LMENU = 0xA4, VK_RMENU = 0xA5;
     private const int VK_LWIN = 0x5B, VK_RWIN = 0x5C;
 
     private delegate IntPtr HookProc(int nCode, IntPtr wParam, IntPtr lParam);
@@ -66,6 +71,7 @@ internal sealed class KeyboardHook : IDisposable
 
     private readonly HookProc _kbProc;
     private readonly HookProc _mouseProc;
+    private readonly HashSet<int> _swallowedKeyUps = new();
     private IntPtr _kbHook = IntPtr.Zero;
     private IntPtr _mouseHook = IntPtr.Zero;
 
@@ -81,10 +87,18 @@ internal sealed class KeyboardHook : IDisposable
         _kbProc = KeyboardProc;
         _mouseProc = MouseProc;
         var module = GetModuleHandle(null);
+
         _kbHook = SetWindowsHookEx(WH_KEYBOARD_LL, _kbProc, module, 0);
-        _mouseHook = SetWindowsHookEx(WH_MOUSE_LL, _mouseProc, module, 0);
         if (_kbHook == IntPtr.Zero)
             throw new InvalidOperationException("Could not install keyboard hook.");
+
+        _mouseHook = SetWindowsHookEx(WH_MOUSE_LL, _mouseProc, module, 0);
+        if (_mouseHook == IntPtr.Zero)
+        {
+            UnhookWindowsHookEx(_kbHook);
+            _kbHook = IntPtr.Zero;
+            throw new InvalidOperationException("Could not install mouse hook.");
+        }
     }
 
     public void Toggle()
@@ -100,7 +114,18 @@ internal sealed class KeyboardHook : IDisposable
         _emitted = "";
     }
 
-    private static bool Down(int vk) => (GetAsyncKeyState(vk) & 0x8000) != 0;
+    private static bool Down(int vKey) => (GetAsyncKeyState(vKey) & 0x8000) != 0;
+
+    private static bool ControlDown() =>
+        Down(VK_CONTROL) || Down(VK_LCONTROL) || Down(VK_RCONTROL);
+
+    private static bool AltDown() =>
+        Down(VK_MENU) || Down(VK_LMENU) || Down(VK_RMENU);
+
+    private static bool ShiftDown() =>
+        Down(VK_SHIFT) || Down(VK_LSHIFT) || Down(VK_RSHIFT);
+
+    private static bool WindowsKeyDown() => Down(VK_LWIN) || Down(VK_RWIN);
 
     private IntPtr MouseProc(int nCode, IntPtr wParam, IntPtr lParam)
     {
@@ -120,15 +145,32 @@ internal sealed class KeyboardHook : IDisposable
             var k = Marshal.PtrToStructure<KBDLLHOOKSTRUCT>(lParam);
             bool injected = (k.flags & LLKHF_INJECTED) != 0;
             int msg = (int)wParam;
-            if (!injected && (msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN))
+            int vk = (int)k.vkCode;
+
+            if (!injected)
             {
-                try
+                // Match key-up with every key-down swallowed by this hook. This is
+                // especially important for Win+Space so Windows cannot also switch
+                // its own input-language layout.
+                if (msg == WM_KEYUP || msg == WM_SYSKEYUP)
                 {
-                    if (HandleKeyDown((int)k.vkCode)) return (IntPtr)1; // swallow
+                    if (_swallowedKeyUps.Remove(vk))
+                        return (IntPtr)1;
                 }
-                catch
+                else if (msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN)
                 {
-                    Reset();
+                    try
+                    {
+                        if (HandleKeyDown(vk))
+                        {
+                            _swallowedKeyUps.Add(vk);
+                            return (IntPtr)1; // swallow both halves of this key press
+                        }
+                    }
+                    catch
+                    {
+                        Reset();
+                    }
                 }
             }
         }
@@ -137,12 +179,16 @@ internal sealed class KeyboardHook : IDisposable
 
     private bool HandleKeyDown(int vk)
     {
-        bool ctrl = Down(VK_CONTROL);
-        bool alt = Down(VK_MENU);
-        bool win = Down(VK_LWIN) || Down(VK_RWIN);
+        bool ctrl = ControlDown();
+        bool alt = AltDown();
+        bool win = WindowsKeyDown();
+        bool shift = ShiftDown();
 
-        // Ctrl+Space toggles Sinhala / English
-        if (vk == VK_SPACE && ctrl && !alt && !win)
+        // Keep Ctrl+Space as an alternative. Win+Space is handled here before
+        // Windows receives it, preventing the Windows input-language switcher
+        // from opening as well.
+        if (vk == VK_SPACE && !alt && !shift &&
+            ((win && !ctrl) || (ctrl && !win)))
         {
             Toggle();
             return true;
@@ -150,7 +196,7 @@ internal sealed class KeyboardHook : IDisposable
 
         if (!Enabled) return false;
 
-        // Modifier keys alone never end a word
+        // Modifier keys alone never end a word.
         if (vk == VK_SHIFT || vk == VK_CONTROL || vk == VK_MENU || vk == VK_CAPITAL ||
             (vk >= 0xA0 && vk <= 0xA5) || vk == VK_LWIN || vk == VK_RWIN)
             return false;
@@ -162,7 +208,6 @@ internal sealed class KeyboardHook : IDisposable
 
         if (vk >= 0x41 && vk <= 0x5A) // A-Z
         {
-            bool shift = Down(VK_SHIFT);
             _buffer.Append((char)(shift ? vk : vk + 32)); // Caps Lock is ignored
             Update();
             return true;
@@ -175,7 +220,7 @@ internal sealed class KeyboardHook : IDisposable
             return true;
         }
 
-        // space, enter, digits, punctuation, arrows ... end the current word
+        // Space, enter, digits, punctuation, arrows ... end the current word.
         Reset();
         return false;
     }
@@ -199,8 +244,18 @@ internal sealed class KeyboardHook : IDisposable
             inputs.Add(Key(0, next[i], KEYEVENTF_UNICODE));
             inputs.Add(Key(0, next[i], KEYEVENTF_UNICODE | KEYEVENTF_KEYUP));
         }
+
         if (inputs.Count > 0)
-            SendInput((uint)inputs.Count, inputs.ToArray(), Marshal.SizeOf<INPUT>());
+        {
+            uint sent = SendInput((uint)inputs.Count, inputs.ToArray(), Marshal.SizeOf<INPUT>());
+            if (sent != (uint)inputs.Count)
+            {
+                // Do not keep a stale conversion buffer if Windows rejected input
+                // (for example, when the target application is running elevated).
+                Reset();
+                return;
+            }
+        }
 
         _emitted = next;
     }
