@@ -262,7 +262,8 @@ public:
         {
             TF_SELECTION newSelection{};
             newSelection.range = range;
-            newSelection.style = TF_AE_END;
+            newSelection.style.ase = TF_AE_END;
+            newSelection.style.fInterimChar = FALSE;
             hr = m_context->SetSelection(cookie, 1, &newSelection);
         }
 
