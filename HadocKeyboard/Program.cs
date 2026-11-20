@@ -1,6 +1,7 @@
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Text;
+using System.Runtime.InteropServices;
 
 namespace HadocKeyboard;
 
@@ -26,6 +27,10 @@ internal sealed class TrayContext : ApplicationContext
     private readonly Icon _offIcon;
     private readonly ToolStripMenuItem _toggleItem;
 
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool DestroyIcon(IntPtr hIcon);
+
     public TrayContext()
     {
         _onIcon = MakeIcon("සි", Color.FromArgb(0, 120, 215));
@@ -37,11 +42,13 @@ internal sealed class TrayContext : ApplicationContext
         }
         catch (Exception ex)
         {
+            _onIcon.Dispose();
+            _offIcon.Dispose();
             MessageBox.Show(ex.Message, "HADOC KeyBoard", MessageBoxButtons.OK, MessageBoxIcon.Error);
             throw;
         }
 
-        _toggleItem = new ToolStripMenuItem("Toggle Sinhala / English  (Ctrl+Space)", null, (_, _) => _hook.Toggle());
+        _toggleItem = new ToolStripMenuItem("Toggle Sinhala / English  (Win+Space / Ctrl+Space)", null, (_, _) => _hook.Toggle());
         var exitItem = new ToolStripMenuItem("Exit", null, (_, _) => ExitThread());
         var menu = new ContextMenuStrip();
         menu.Items.Add(_toggleItem);
@@ -54,7 +61,7 @@ internal sealed class TrayContext : ApplicationContext
         RefreshTray();
 
         _tray.ShowBalloonTip(3000, "HADOC KeyBoard",
-            "Running. Press Ctrl+Space to switch Sinhala / English.", ToolTipIcon.Info);
+            "Running. Press Win+Space or Ctrl+Space to switch Sinhala / English.", ToolTipIcon.Info);
     }
 
     private void RefreshTray()
@@ -76,7 +83,16 @@ internal sealed class TrayContext : ApplicationContext
             var size = g.MeasureString(text, font);
             g.DrawString(text, font, Brushes.White, (32 - size.Width) / 2f, (32 - size.Height) / 2f);
         }
-        return (Icon)Icon.FromHandle(bmp.GetHicon()).Clone();
+
+        IntPtr hIcon = bmp.GetHicon();
+        try
+        {
+            return (Icon)Icon.FromHandle(hIcon).Clone();
+        }
+        finally
+        {
+            DestroyIcon(hIcon);
+        }
     }
 
     protected override void ExitThreadCore()
@@ -84,6 +100,8 @@ internal sealed class TrayContext : ApplicationContext
         _tray.Visible = false;
         _tray.Dispose();
         _hook.Dispose();
+        _onIcon.Dispose();
+        _offIcon.Dispose();
         base.ExitThreadCore();
     }
 }
