@@ -60,9 +60,9 @@ jobs:
         if: github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.1
+          tag_name: v1.0.2
           target_commitish: main
-          name: HADOC KeyBoard v1.0.1
+          name: HADOC KeyBoard v1.0.2
           files: |
             dist/HADOC-KeyBoard-Setup.exe
             dist/SHA256SUMS.txt
